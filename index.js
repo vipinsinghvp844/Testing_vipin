@@ -11,6 +11,10 @@ let onlineUsers = {}; // Store online users
 server.on("connection", (ws) => {
   console.log("Client connected");
 
+ for (const userId in onlineUsers) {
+    ws.send(JSON.stringify({ type: "user_status_update", userId, status: "online" }));
+  }
+  
   ws.on("message", (message) => {
     try {
       const data = JSON.parse(message);
