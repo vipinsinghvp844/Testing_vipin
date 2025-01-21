@@ -8,23 +8,41 @@ const server = new WebSocket.Server({ port: PORT });
 
 let onlineUsers = {}; // Store online users
 
+const HEARTBEAT_INTERVAL = 30000;
+
 server.on("connection", (ws) => {
   console.log("Client connected");
 
- for (const userId in onlineUsers) {
-    ws.send(JSON.stringify({ type: "user_status_update", userId, status: "online" }));
+  for (const userId in onlineUsers) {
+    ws.send(
+      JSON.stringify({
+        type: "user_status_update",
+        userId,
+        status: "online",
+        lastUpdated: onlineUsers[userId].lastUpdated,
+      })
+    );
   }
-  
   ws.on("message", (message) => {
+
     try {
       const data = JSON.parse(message);
 
       if (data.type === "user_online") {
-        onlineUsers[data.userId] = ws;
-        broadcastUserStatus(data.userId, "online");
+        onlineUsers[data.userId] = {
+          socket: ws,
+          lastUpdated: new Date().toISOString(),
+        };
+        broadcastUserStatus(
+          data.userId,
+          "online",
+          onlineUsers[data.userId].lastUpdated // Ensure correct value
+        );
       } else if (data.type === "user_offline") {
+        const lastUpdated = new Date().toISOString();
+
+        broadcastUserStatus(data.userId, "offline", lastUpdated);
         delete onlineUsers[data.userId];
-        broadcastUserStatus(data.userId, "offline");
       } else {
         // Forward chat messages
         server.clients.forEach((client) => {
@@ -37,12 +55,13 @@ server.on("connection", (ws) => {
       console.error("Error parsing WebSocket message:", error);
     }
   });
+      console.log('Sending to client:', message);
 
   ws.on("close", () => {
     let disconnectedUserId = null;
 
     for (const userId in onlineUsers) {
-      if (onlineUsers[userId] === ws) {
+      if (onlineUsers[userId].socket === ws) {
         disconnectedUserId = userId;
         delete onlineUsers[userId];
         break;
@@ -50,16 +69,23 @@ server.on("connection", (ws) => {
     }
 
     if (disconnectedUserId) {
-      broadcastUserStatus(disconnectedUserId, "offline");
+      const lastUpdated = new Date().toISOString();
+      broadcastUserStatus(disconnectedUserId, "offline", lastUpdated);
+      delete onlineUsers[disconnectedUserId];
     }
-    
+
     console.log("Client disconnected");
   });
 });
 
 // ✅ Function to broadcast user status to all clients
-function broadcastUserStatus(userId, status) {
-  const message = JSON.stringify({ type: "user_status_update", userId, status });
+function broadcastUserStatus(userId, status, lastUpdated) {
+  const message = JSON.stringify({
+    type: "user_status_update",
+    userId,
+    status,
+    lastUpdated,
+  });
 
   console.log("Broadcasting user status:", message); // Debugging
 
