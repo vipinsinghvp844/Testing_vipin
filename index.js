@@ -7,6 +7,7 @@ const PORT = process.env.PORT || 8080;
 const server = new WebSocket.Server({ port: PORT });
 
 let onlineUsers = {}; // Store online users
+console.log("Server started. Online users:", onlineUsers);
 
 const HEARTBEAT_INTERVAL = 30000;
 
@@ -55,7 +56,7 @@ server.on("connection", (ws) => {
       console.error("Error parsing WebSocket message:", error);
     }
   });
-      console.log('Sending to client:', message);
+      // console.log('Sending to client:', message);
 
   ws.on("close", () => {
     let disconnectedUserId = null;
@@ -71,7 +72,7 @@ server.on("connection", (ws) => {
     if (disconnectedUserId) {
       const lastUpdated = new Date().toISOString();
       broadcastUserStatus(disconnectedUserId, "offline", lastUpdated);
-      delete onlineUsers[disconnectedUserId];
+      // delete onlineUsers[disconnectedUserId];
     }
 
     console.log("Client disconnected");
@@ -88,12 +89,13 @@ function broadcastUserStatus(userId, status, lastUpdated) {
   });
 
   console.log("Broadcasting user status:", message); // Debugging
-
-  server.clients.forEach((client) => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(message);
-    }
-  });
+  setInterval(() => {
+    server.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  },[HEARTBEAT_INTERVAL])
 }
 
 console.log(`WebSocket server is running on ws://localhost:${PORT}`);
