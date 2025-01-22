@@ -7,13 +7,11 @@ const PORT = process.env.PORT || 8080;
 const server = new WebSocket.Server({ port: PORT });
 
 let onlineUsers = {}; // Store online users
-console.log("Server started. Online users:", onlineUsers);
-
-const HEARTBEAT_INTERVAL = 30000;
 
 server.on("connection", (ws) => {
   console.log("Client connected");
 
+  // Send all currently online users to the newly connected client
   for (const userId in onlineUsers) {
     ws.send(
       JSON.stringify({
@@ -24,28 +22,29 @@ server.on("connection", (ws) => {
       })
     );
   }
-  ws.on("message", (message) => {
 
+  ws.on("message", (message) => {
     try {
       const data = JSON.parse(message);
 
       if (data.type === "user_online") {
+        // Add user to the onlineUsers object
         onlineUsers[data.userId] = {
           socket: ws,
           lastUpdated: new Date().toISOString(),
         };
-        broadcastUserStatus(
-          data.userId,
-          "online",
-          onlineUsers[data.userId].lastUpdated // Ensure correct value
-        );
-      } else if (data.type === "user_offline") {
-        const lastUpdated = new Date().toISOString();
 
-        broadcastUserStatus(data.userId, "offline", lastUpdated);
-        delete onlineUsers[data.userId];
+        // Broadcast the new user's online status
+        broadcastUserStatus(data.userId, "online", onlineUsers[data.userId].lastUpdated);
+      } else if (data.type === "user_offline") {
+        if (onlineUsers[data.userId]) {
+          const lastUpdated = new Date().toISOString();
+          // Broadcast offline status
+          broadcastUserStatus(data.userId, "offline", lastUpdated);
+          delete onlineUsers[data.userId];
+        }
       } else {
-        // Forward chat messages
+        // Forward chat messages to other clients
         server.clients.forEach((client) => {
           if (client !== ws && client.readyState === WebSocket.OPEN) {
             client.send(JSON.stringify(data));
@@ -56,9 +55,9 @@ server.on("connection", (ws) => {
       console.error("Error parsing WebSocket message:", error);
     }
   });
-      // console.log('Sending to client:', message);
 
   ws.on("close", () => {
+    // Find the disconnected user
     let disconnectedUserId = null;
 
     for (const userId in onlineUsers) {
@@ -71,15 +70,15 @@ server.on("connection", (ws) => {
 
     if (disconnectedUserId) {
       const lastUpdated = new Date().toISOString();
+      // Broadcast the offline status
       broadcastUserStatus(disconnectedUserId, "offline", lastUpdated);
-      // delete onlineUsers[disconnectedUserId];
     }
 
     console.log("Client disconnected");
   });
 });
 
-// ✅ Function to broadcast user status to all clients
+// ✅ Function to broadcast user status to all connected clients
 function broadcastUserStatus(userId, status, lastUpdated) {
   const message = JSON.stringify({
     type: "user_status_update",
@@ -88,14 +87,11 @@ function broadcastUserStatus(userId, status, lastUpdated) {
     lastUpdated,
   });
 
-  console.log("Broadcasting user status:", message); // Debugging
-  setInterval(() => {
-    server.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(message);
-      }
-    });
-  },[HEARTBEAT_INTERVAL])
+  server.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(message);
+    }
+  });
 }
 
 console.log(`WebSocket server is running on ws://localhost:${PORT}`);
